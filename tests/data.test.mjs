@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { initialData, validateBackup, base64AsBlob, formatDate } from '../src/data.js';
+const backup = () => ({ format:'hearth-backup', version:1, data:initialData(), files:[] });
+test('a complete metadata-only workspace can be restored',()=>{const value=backup();assert.equal(validateBackup(value),value);});
+test('missing attachments cannot silently replace a workspace',()=>{const value=backup();value.data.documents[0].fileId='missing';assert.throws(()=>validateBackup(value),/missing an attachment/);});
+test('duplicate record IDs are rejected',()=>{const value=backup();value.data.contacts.push({...value.data.contacts[0]});assert.throws(()=>validateBackup(value),/duplicate/);});
+test('malformed optional fields are rejected before rendering',()=>{const value=backup();value.data.documents[0].fileType=42;assert.throws(()=>validateBackup(value),/invalid text fields/);});
+test('nested field values and unknown categories cannot be imported',()=>{const value=backup();value.data.projects[0].notes={bad:true};assert.throws(()=>validateBackup(value),/unsupported field/);const category=backup();category.data.documents[0].category='Unknown';assert.throws(()=>validateBackup(category),/unknown document category/);});
+test('negative and nonfinite amounts are rejected',()=>{for(const budget of ['-1','Infinity','invalid']){const value=backup();value.data.projects[0].budget=budget;assert.throws(()=>validateBackup(value),/invalid amounts/);}});
+test('file bytes survive base64 backup encoding',async()=>{const blob=base64AsBlob('AAEC/4A=','application/octet-stream');assert.deepEqual([...new Uint8Array(await blob.arrayBuffer())],[0,1,2,255,128]);});
+test('invalid date values render without crashing the workspace',()=>{assert.equal(formatDate('invalid'),'Not recorded');assert.equal(formatDate(''),'Not recorded');assert.equal(formatDate('2027-01-15'),'15 Jan 2027');});
